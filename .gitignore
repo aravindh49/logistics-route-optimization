@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Generated data and reports
+/data/
+/reports/
+
+# Saved models (can be large)
+/models/
+*.pkl
