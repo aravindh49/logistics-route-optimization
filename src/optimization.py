@@ -64,3 +64,20 @@ def find_baseline_route(graph, start_node, end_node):
         return path, total_time
     except nx.NetworkXNoPath:
         return None, None
+
+def calculate_path_cost(graph, path):
+    """Calculates the total fuel cost for a given path."""
+    total_cost = 0
+    if not path or len(path) < 2:
+        return 0
+    
+    for i in range(len(path) - 1):
+        u, v = path[i], path[i+1]
+        edge_data = graph.get_edge_data(u, v)
+        if edge_data:
+            # Default fuel cost to 0.2 if not present (though our generator adds it)
+            fuel_cost_per_km = edge_data.get('fuel_cost_per_km', 0.2)
+            distance = edge_data.get('distance', 0)
+            total_cost += distance * fuel_cost_per_km
+            
+    return total_cost

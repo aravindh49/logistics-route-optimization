@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
-def visualize_routes(graph, baseline_path, optimized_path, save_path="reports/route_comparison.png"):
+def visualize_routes(graph, baseline_path, optimized_path, save_path="reports/route_comparison.png", return_image=False):
     """
     Visualizes the baseline vs. optimized routes on a map.
 
@@ -12,6 +12,7 @@ def visualize_routes(graph, baseline_path, optimized_path, save_path="reports/ro
         baseline_path (list): The list of nodes in the baseline path.
         optimized_path (list): The list of nodes in the optimized path.
         save_path (str): Path to save the visualization.
+        return_image (bool): If True, returns a BytesIO object of the image.
     """
     pos = nx.spring_layout(graph, seed=42)  # positions for all nodes
 
@@ -36,10 +37,18 @@ def visualize_routes(graph, baseline_path, optimized_path, save_path="reports/ro
     plt.legend()
     plt.axis('off')
     
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    plt.savefig(save_path)
-    plt.close()
-    print(f"Route visualization saved to {save_path}")
+    if return_image:
+        import io
+        img_buffer = io.BytesIO()
+        plt.savefig(img_buffer, format='png')
+        plt.close()
+        img_buffer.seek(0)
+        return img_buffer
+    else:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path)
+        plt.close()
+        print(f"Route visualization saved to {save_path}")
 
 def generate_report(results, report_path="reports/optimization_report.csv"):
     """

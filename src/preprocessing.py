@@ -101,9 +101,9 @@ def preprocess_data(df):
     """
     # Feature Engineering
     df['estimated_cost'] = df['distance_km'] * df['fuel_cost_per_km']
-    # Base time is distance / average speed (e.g., 60 km/h)
-    df['base_time_minutes'] = (df['distance_km'] / 60) * 60 
-    df['estimated_time_minutes'] = df['base_time_minutes'] * df['traffic_factor']
+    df['base_time_minutes'] = df['distance_km']  # distance in km
+    df['estimated_time_minutes'] = (df['base_time_minutes'] / 60) * df['traffic_factor'] * 60
+
 
     # Define features (X) and target (y)
     # We predict 'estimated_time_minutes'

@@ -1,0 +1,13 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+networkx
+Faker
+python-dateutil
+fastapi
+uvicorn
+python-multipart
+markdown
+xhtml2pdf
+aiofiles

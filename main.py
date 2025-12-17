@@ -1,12 +1,13 @@
 import joblib
-import os
 import random
-
-from preprocessing import preprocess_data, load_and_combine_data
-from model import train_and_save_model
-from evaluation import evaluate_model
-from optimization import create_graph_from_data, find_optimized_route, find_baseline_route
-from visualization import visualize_routes, generate_report
+import pandas as pd
+from src.preprocessing import load_and_combine_data, preprocess_data
+from src.data_generator import generate_logistics_data
+from src.preprocessing import preprocess_data
+from src.model import train_and_save_model
+from src.evaluation import evaluate_model
+from src.optimization import create_graph_from_data, find_optimized_route, find_baseline_route
+from src.visualization import visualize_routes, generate_report
 
 def main():
     """
@@ -14,17 +15,15 @@ def main():
     """
     print("--- Starting Logistics Route Optimization Pipeline ---")
 
-    # Define the base directory of the project (E:\Logistic_optimization)
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-    # Step 1: Load your custom data from the 'Dataset' directory
-    print("\n[1/7] Loading custom data...")
-    dataset_path = os.path.join(BASE_DIR, "Dataset")
-    df = load_and_combine_data(dataset_path)
+    # Step 1: Generate Data if it doesn't exist
+    print("\n[1/7] Generating synthetic data...")
+    generate_logistics_data(num_records=500, num_cities=30, data_path="data/logistics_data.csv")
 
     # Step 2: Preprocess Data
     print("\n[2/7] Preprocessing data...")
-    X_train, X_test, y_train, y_test, preprocessor, df_processed = preprocess_data(df)
+    df = pd.read_csv("data/logistics_data.csv")
+    X_train, X_test, y_train, y_test, preprocessor, df = preprocess_data(df)
+
 
     # Step 3: Train Model
     print("\n[3/7] Training prediction model...")
@@ -33,11 +32,10 @@ def main():
     # Step 4: Evaluate Model
     print("\n[4/7] Evaluating model performance...")
     evaluate_model(model, X_test, y_test)
-    
 
     # Step 5: Optimize a Route
     print("\n[5/7] Optimizing a sample route...")
-    graph = create_graph_from_data(df_processed)
+    graph = create_graph_from_data(df)
     
     # Select a random start and end node for demonstration
     nodes = list(graph.nodes)
