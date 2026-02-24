@@ -7,10 +7,4 @@ __pycache__/
 venv/
 env/
 
-# Generated data and reports
-/data/
-/reports/
-
-# Saved models (can be large)
-/models/
-*.pkl
+# Data, reports, and models are tracked in this project.
