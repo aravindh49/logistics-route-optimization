@@ -213,7 +213,12 @@ body {
     /* Grow to fill space */
     background: #0f172a;
     z-index: 1;
-    /* CSS Filter to make normal OSM tiles look like Dark Mode */
+}
+
+.leaflet-layer,
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out,
+.leaflet-control-attribution {
     filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
 }
 

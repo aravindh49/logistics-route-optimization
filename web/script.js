@@ -2,7 +2,7 @@
 // Ensures Map Stability and Clean API Interactions
 
 // Configuration
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = window.location.origin;
 const DEFAULT_CENTER = [11.1271, 78.6569]; // Tamil Nadu
 const DEFAULT_ZOOM = 7;
 
@@ -156,21 +156,20 @@ function displayResults(data) {
     if (layers.baseline) map.removeLayer(layers.baseline);
     if (layers.optimized) map.removeLayer(layers.optimized);
 
-    // 2. Draw Baseline (Orange Dashed)
+    // 2. Draw Baseline (Orange thick border)
     if (data.base_coords && data.base_coords.length > 0) {
         layers.baseline = L.polyline(data.base_coords, {
             color: '#f59e0b', // Orange
-            weight: 4,
-            dashArray: '10, 10',
-            opacity: 0.8
+            weight: 12,       // Thick enough to be seen under the green line
+            opacity: 0.5
         }).addTo(map);
     }
 
-    // 3. Draw Optimized (Green Solid)
+    // 3. Draw Optimized (Green Solid inner line)
     if (data.opt_coords && data.opt_coords.length > 0) {
         layers.optimized = L.polyline(data.opt_coords, {
             color: '#10b981', // Green
-            weight: 6,
+            weight: 4,        // Thinner, sits strictly on top of orange
             opacity: 1
         }).addTo(map);
     }

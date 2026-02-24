@@ -102,7 +102,13 @@ def optimize_route(request: OptimizationRequest):
     opt_cost = calculate_path_cost(graph, opt_path)
     base_cost = calculate_path_cost(graph, base_path)
 
-    # 4. Metrics
+    # 4. Guarantee optimization: if AI predicts a worse time, fallback to baseline
+    if opt_time > base_time:
+        opt_time = base_time
+        opt_path = base_path
+        opt_cost = base_cost
+
+    # 5. Metrics
     time_saved = base_time - opt_time
     cost_saved = base_cost - opt_cost
     efficiency = (time_saved / base_time * 100) if base_time > 0 else 0
