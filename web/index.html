@@ -4,119 +4,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Logistics Optimizer</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <!-- Leaflet CSS -->
+    <title>AI Logistics Optimizer | TamilNaduAI</title>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Libraries -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="/static/style.css">
-
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
-    <div class="container">
-        <!-- Sidebar / Control Panel -->
+
+    <div class="app-container">
+        <!-- Sidebar Control Panel -->
         <aside class="sidebar">
-            <div class="logo">
-                <h1>Logistics<span>AI</span></h1>
-                <p>Route Optimization System</p>
+            <div class="brand">
+                <h1>TamilNadu<span>AI</span></h1>
+                <p>Logistics Optimization System</p>
             </div>
 
-            <div class="control-panel">
-                <div class="form-group">
-                    <label for="start-city">Origin City</label>
-                    <div class="select-wrapper">
-                        <select id="start-city">
-                            <option value="" disabled selected>Select Origin</option>
-                        </select>
-                    </div>
+            <div class="controls">
+                <div class="input-group">
+                    <label>Origin City</label>
+                    <select id="start-city">
+                        <option value="" disabled selected>Select Origin...</option>
+                    </select>
                 </div>
 
-                <div class="control-connector">
+                <div class="route-icon">
                     <div class="line"></div>
-                    <div class="icon">↓</div>
+                    <span>➜</span>
                     <div class="line"></div>
                 </div>
 
-                <div class="form-group">
-                    <label for="end-city">Destination City</label>
-                    <div class="select-wrapper">
-                        <select id="end-city">
-                            <option value="" disabled selected>Select Destination</option>
-                        </select>
-                    </div>
+                <div class="input-group">
+                    <label>Destination City</label>
+                    <select id="end-city">
+                        <option value="" disabled selected>Select Destination...</option>
+                    </select>
                 </div>
+
+                <!-- Future Extensibility: Add Simulator Dropdown here if needed later -->
 
                 <button id="optimize-btn" class="btn-primary">
-                    <span class="btn-text">Find Optimized Route</span>
+                    Find Optimized Route
                 </button>
             </div>
 
+            <!-- Results Section -->
             <div id="results-panel" class="results-panel hidden">
                 <h3>Optimization Results</h3>
 
-                <div class="kpi-card glass-success">
-                    <span class="kpi-label">Time Saved</span>
-                    <span class="kpi-value" id="kpi-saved">0 min</span>
-                </div>
+                <div class="kpi-grid">
+                    <div class="kpi-card highlight">
+                        <span class="label">Time Saved</span>
+                        <span class="value" id="val-time-saved">--</span>
+                    </div>
 
-                <div class="kpi-row">
-                    <div class="kpi-card glass-neutral">
-                        <span class="kpi-label">Baseline Time</span>
-                        <span class="kpi-value-sm" id="kpi-baseline">0 min</span>
+                    <div class="kpi-card">
+                        <span class="label">Baseline Time</span>
+                        <span class="value-sm" id="val-base-time">--</span>
                     </div>
-                    <div class="kpi-card glass-accent">
-                        <span class="kpi-label">AI Opt. Time</span>
-                        <span class="kpi-value-sm" id="kpi-optimized">0 min</span>
+                    <div class="kpi-card">
+                        <span class="label">AI Time</span>
+                        <span class="value-sm" id="val-opt-time">--</span>
                     </div>
-                </div>
 
-                <div class="kpi-row">
-                    <div class="kpi-card glass-neutral">
-                        <span class="kpi-label">Baseline Cost</span>
-                        <span class="kpi-value-sm" id="kpi-base-cost">$0</span>
+                    <div class="kpi-card">
+                        <span class="label">Baseline Cost</span>
+                        <span class="value-sm" id="val-base-cost">--</span>
                     </div>
-                    <div class="kpi-card glass-accent">
-                        <span class="kpi-label">AI Opt. Cost</span>
-                        <span class="kpi-value-sm" id="kpi-opt-cost">$0</span>
+                    <div class="kpi-card">
+                        <span class="label">AI Cost</span>
+                        <span class="value-sm" id="val-opt-cost">--</span>
                     </div>
                 </div>
 
-                <div class="kpi-card glass-success" style="margin-top: 10px;">
-                    <span class="kpi-label">Cost Savings</span>
-                    <span class="kpi-value" id="kpi-cost-saved">$0</span>
+                <div class="kpi-card efficiency">
+                    <span class="label">Efficiency Gain</span>
+                    <span class="value" id="val-efficiency">--</span>
                 </div>
 
-                <div class="kpi-card glass-info">
-                    <span class="kpi-label">Efficiency Gain</span>
-                    <span class="kpi-value" id="kpi-efficiency">0%</span>
-                </div>
-
-                <button id="download-btn" class="btn-secondary">Download PDF Report</button>
+                <button id="download-btn" class="btn-secondary">Download Report (PDF)</button>
             </div>
         </aside>
 
-        <!-- Main Visualization Area -->
-        <main class="main-content">
-            <div class="map-container glass-panel">
-                <div class="map-header">
-                    <h2>Live Route Visualization</h2>
-                    <div class="legend">
-                        <span class="legend-item"><span class="dot orange"></span> Baseline</span>
-                        <span class="legend-item"><span class="dot green"></span> AI Optimized</span>
-                    </div>
+        <!-- Main Map Area -->
+        <main class="map-wrapper">
+            <div class="map-overlay">
+                <h2>Live Route Visualization</h2>
+                <div class="legend">
+                    <span class="item"><span class="dot baseline"></span> Baseline</span>
+                    <span class="item"><span class="dot optimized"></span> AI Optimized</span>
                 </div>
-                <!-- Leaflet Map Container -->
-                <div id="map-visual" class="map-visual"></div>
             </div>
+            <div id="map-visual"></div>
         </main>
     </div>
-    <script src="/static/script.js"></script>
+
+    <!-- Application Logic -->
+    <script src="/static/script.js" defer></script>
 </body>
 
 </html>

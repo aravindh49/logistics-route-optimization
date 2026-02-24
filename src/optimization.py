@@ -40,8 +40,7 @@ def find_optimized_route(graph, model, start_node, end_node, time_of_day='aftern
             'time_of_day': time_of_day
         }])
         # Predict time
-        predicted_time = model.predict(feature_df)[0]
-        return predicted_time
+        return model.predict(feature_df)[0]
 
     try:
         # Find the shortest path using Dijkstra's algorithm with the ML model's prediction as weight

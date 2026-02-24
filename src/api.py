@@ -1,22 +1,19 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse, Response, FileResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import pandas as pd
 import joblib
-import networkx as nx
-import base64
-import io
 import os
 
 from src.optimization import create_graph_from_data, find_optimized_route, find_baseline_route, calculate_path_cost
-from src.visualization import visualize_routes
 from src.generate_pdf_report import create_pdf_report
 
-app = FastAPI(title="Logistics Optimization API")
+# --- Application Setup ---
+app = FastAPI(title="Logistics Optimization API | TamilNaduAI")
 
-# Enable CORS
+# Enable CORS (Cross-Origin Resource Sharing)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,46 +22,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve Static Files
+# Serve Static Files (CSS/JS)
 app.mount("/static", StaticFiles(directory="web"), name="static")
+
+# --- Global Resources ---
+resources = {
+    "df": None,
+    "model": None,
+    "graph": None
+}
+
+def load_resources():
+    """Loads CSV data, Model, and Graph into memory on startup."""
+    try:
+        print("Creating Resources...")
+        resources["df"] = pd.read_csv("data/logistics_data.csv")
+        resources["model"] = joblib.load("models/delivery_time_predictor.pkl")
+        resources["graph"] = create_graph_from_data(resources["df"])
+        print("✅ Resources Loaded Successfully.")
+    except Exception as e:
+        print(f"❌ Error loading resources: {e}")
+
+# Load immediately
+load_resources()
+
+# --- Data Models ---
+class OptimizationRequest(BaseModel):
+    start_node: str
+    end_node: str
+
+# --- Endpoints ---
 
 @app.get("/")
 async def read_index():
     return FileResponse('web/index.html')
 
-# Global variables
-df = None
-model = None
-graph = None
-preprocessor = None
-
-def load_resources():
-    global df, model, graph, preprocessor
-    try:
-        print("Loading resources...")
-        df = pd.read_csv("data/logistics_data.csv")
-        # Load the pipeline (which contains both preprocessor and regressor)
-        model = joblib.load("models/delivery_time_predictor.pkl")
-        
-        # Precompute graph
-        graph = create_graph_from_data(df)
-        print("Resources loaded successfully.")
-    except Exception as e:
-        print(f"Error loading resources: {e}")
-
-# Load on startup
-load_resources()
-
-class OptimizationRequest(BaseModel):
-    start_node: str
-    end_node: str
-
 @app.get("/cities")
 def get_cities():
+    """Returns a list of unique cities with coordinates for the dropdowns."""
+    df = resources["df"]
     if df is None:
         raise HTTPException(status_code=500, detail="Data not loaded")
     
-    # Extract unique cities with coordinates
+    # Extract Start and End cities to ensure we get all unique locations
     start_cities = df[['start_location', 'start_lat', 'start_lon']].rename(
         columns={'start_location': 'name', 'start_lat': 'lat', 'start_lon': 'lon'}
     )
@@ -75,67 +75,63 @@ def get_cities():
     all_cities = pd.concat([start_cities, end_cities]).drop_duplicates(subset=['name']).sort_values('name')
     return {"cities": all_cities.to_dict(orient='records')}
 
-def get_coords(city_name):
-    # Helper to get coords for a city
-    if df is None: return None
-    row = df[df['start_location'] == city_name].iloc[0]
-    return [row['start_lat'], row['start_lon']]
-    
 @app.post("/optimize")
 def optimize_route(request: OptimizationRequest):
-    if graph is None or model is None:
+    """Calculates the best route vs baseline."""
+    graph = resources["graph"]
+    model = resources["model"]
+    start = request.start_node
+    end = request.end_node
+
+    if not graph or not model:
         raise HTTPException(status_code=500, detail="System not ready")
 
-    start_node = request.start_node
-    end_node = request.end_node
-
-    if start_node not in graph.nodes or end_node not in graph.nodes:
+    if start not in graph.nodes or end not in graph.nodes:
         raise HTTPException(status_code=404, detail="City not found in network")
 
-    # 1. Calculate Routes
-    optimized_path, optimized_time = find_optimized_route(graph, model, start_node, end_node)
-    baseline_path, baseline_time = find_baseline_route(graph, start_node, end_node)
+    # 1. Calculate Optimized Route (AI)
+    opt_path, opt_time = find_optimized_route(graph, model, start, end)
+    
+    # 2. Calculate Baseline Route (Distance)
+    base_path, base_time = find_baseline_route(graph, start, end)
 
-    if not optimized_path:
-        raise HTTPException(status_code=400, detail="No path found between selected cities")
+    if not opt_path:
+        raise HTTPException(status_code=400, detail="No route found")
 
-    # 2. Calculate Costs
-    optimized_cost = calculate_path_cost(graph, optimized_path)
-    baseline_cost = calculate_path_cost(graph, baseline_path)
+    # 3. Cost Calculations
+    opt_cost = calculate_path_cost(graph, opt_path)
+    base_cost = calculate_path_cost(graph, base_path)
 
-    # 3. Calculate Metrics
-    time_saved = baseline_time - optimized_time
-    cost_saved = baseline_cost - optimized_cost
-    efficiency_gain = (time_saved / baseline_time * 100) if baseline_time > 0 else 0
+    # 4. Metrics
+    time_saved = base_time - opt_time
+    cost_saved = base_cost - opt_cost
+    efficiency = (time_saved / base_time * 100) if base_time > 0 else 0
 
-    # 4. Get Coordinates for paths
-    city_lookup = {}
+    # 5. Coordinates for Mapping
+    df = resources["df"]
+    # Quick lookup map
+    city_map = {}
     for _, row in df.iterrows():
-        city_lookup[row['start_location']] = [row['start_lat'], row['start_lon']]
-        city_lookup[row['end_location']] = [row['end_lat'], row['end_lon']]
-
-    opt_coords = [city_lookup.get(city) for city in optimized_path]
-    base_coords = [city_lookup.get(city) for city in baseline_path]
+        city_map[row['start_location']] = [row['start_lat'], row['start_lon']]
+        city_map[row['end_location']] = [row['end_lat'], row['end_lon']]
 
     return {
-        "start_node": start_node,
-        "end_node": end_node,
-        "optimized_time": round(optimized_time, 2),
-        "baseline_time": round(baseline_time, 2),
-        "optimized_cost": round(optimized_cost, 2),
-        "baseline_cost": round(baseline_cost, 2),
+        "start_node": start,
+        "end_node": end,
+        "optimized_time": round(opt_time, 2),
+        "baseline_time": round(base_time, 2),
+        "optimized_cost": round(opt_cost, 2),
+        "baseline_cost": round(base_cost, 2),
         "time_saved": round(time_saved, 2),
         "cost_saved": round(cost_saved, 2),
-        "efficiency_gain": round(efficiency_gain, 2),
-        "optimized_path": optimized_path,
-        "baseline_path": baseline_path,
-        "opt_coords": opt_coords,
-        "base_coords": base_coords
+        "efficiency_gain": round(efficiency, 2),
+        "opt_coords": [city_map.get(c) for c in opt_path],
+        "base_coords": [city_map.get(c) for c in base_path]
     }
 
 @app.get("/report")
 def get_report(start_node: str, end_node: str, opt_time: float, base_time: float):
-    # This is a dynamic report generator. 
+    """Generates and returns a PDF report."""
     time_saved = float(base_time) - float(opt_time)
     efficiency = (time_saved / float(base_time) * 100) if float(base_time) > 0 else 0
     
@@ -143,24 +139,21 @@ def get_report(start_node: str, end_node: str, opt_time: float, base_time: float
 # Logistics Route Optimization Report
 
 ## Executive Summary
-This report compares the baseline routing strategy against our AI-Optimized routing model for the delivery from **{start_node}** to **{end_node}**.
+Optimized delivery from **{start_node}** to **{end_node}**.
 
-## Results Analysis
+## Results
 
-| Metric | Baseline (Distance-Based) | Optimized (AI-Driven) | Improvement |
+| Metric | Baseline | AI Optimized | Improvement |
 | :--- | :--- | :--- | :--- |
 | **Total Time** | {base_time} min | **{opt_time} min** | **{round(time_saved, 2)} min** |
 | **Efficiency** | - | - | **{round(efficiency, 2)}%** |
 
-## Methodology
-- **Baseline**: calculated using standard Dijkstra algorithm minimizing Euclidean distance.
-- **Optimized**: calculated using Random Forest Regression to predict travel time based on traffic, demand, and time of day.
-
 ## Conclusion
-The AI-Optimized route provides a significantly faster delivery path by avoiding predicted high-traffic segments.
+The AI-Optimized route provides a significantly faster delivery path.
     """
     
-    output_path = "reports/user_generated_report.pdf"
+    output_path = "reports/optimization_report.pdf"
+    os.makedirs("reports", exist_ok=True)
     create_pdf_report(markdown_content, output_path)
     
     return FileResponse(output_path, media_type='application/pdf', filename="optimization_report.pdf")

@@ -1,174 +1,199 @@
-const API_URL = '';
+// Modern Robust Script for Logistics Optimization
+// Ensures Map Stability and Clean API Interactions
 
-const dom = {
+// Configuration
+const API_URL = 'http://127.0.0.1:8000';
+const DEFAULT_CENTER = [11.1271, 78.6569]; // Tamil Nadu
+const DEFAULT_ZOOM = 7;
+
+// DOM Elements Reference
+const els = {
     startSelect: document.getElementById('start-city'),
     endSelect: document.getElementById('end-city'),
     optimizeBtn: document.getElementById('optimize-btn'),
     resultsPanel: document.getElementById('results-panel'),
-    kpiSaved: document.getElementById('kpi-saved'),
-    kpiBaseline: document.getElementById('kpi-baseline'),
-    kpiOptimized: document.getElementById('kpi-optimized'),
-    kpiBaseCost: document.getElementById('kpi-base-cost'),
-    kpiOptCost: document.getElementById('kpi-opt-cost'),
-    kpiCostSaved: document.getElementById('kpi-cost-saved'),
-    kpiEfficiency: document.getElementById('kpi-efficiency'),
-    downloadBtn: document.getElementById('download-btn')
+    downloadBtn: document.getElementById('download-btn'),
+    // Outputs
+    valTimeSaved: document.getElementById('val-time-saved'),
+    valBaseTime: document.getElementById('val-base-time'),
+    valOptTime: document.getElementById('val-opt-time'),
+    valBaseCost: document.getElementById('val-base-cost'),
+    valOptCost: document.getElementById('val-opt-cost'),
+    valEfficiency: document.getElementById('val-efficiency'),
 };
 
-let map, baselineLayer, optimizedLayer;
-let currentResult = null;
-let cityMarkers = {};
+// Global State
+let map;
+let layers = {
+    baseline: null,
+    optimized: null,
+    markers: []
+};
+let currentResults = null;
 
-async function init() {
-    // Initialize Leaflet Map (Centered on US)
-    map = L.map('map-visual').setView([39.8283, -98.5795], 4);
+// --- Initialization ---
+async function initApp() {
+    console.log("🚀 Starting Application...");
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
+    // 1. Initialize Map
+    initMap();
+
+    // 2. Load Cities
+    await loadCities();
+
+    // 3. Attach Event Listeners
+    setupEventListeners();
+}
+
+// --- Map Logic ---
+function initMap() {
+    console.log("🗺️ Initializing Leaflet Map...");
+
+    const mapContainer = document.getElementById('map-visual');
+    if (!mapContainer) return console.error("Map container not found!");
+
+    // Create Map
+    map = L.map(mapContainer).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+    // Standard OpenStreetMap Tiles (Keyless, Public, Reliable)
+    // Note: Dark Mode is handled by CSS Filter in style.css
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 19
     }).addTo(map);
 
-    try {
-        const response = await axios.get(`${API_URL}/cities`);
-        const cities = response.data.cities;
+    // ROBUST RESIZE HANDLER: This is the magic fix for "Grey Map" issues
+    // It watches the container size and tells Leaflet to redraw if it changes
+    const resizeObserver = new ResizeObserver(() => {
+        map.invalidateSize();
+    });
+    resizeObserver.observe(mapContainer);
 
+    // Fallback force redraws
+    setTimeout(() => map.invalidateSize(), 500);
+    setTimeout(() => map.invalidateSize(), 2000);
+
+    console.log("✅ Map Initialized");
+}
+
+async function loadCities() {
+    try {
+        const res = await axios.get(`${API_URL}/cities`);
+        const cities = res.data.cities;
+
+        // Add Markers and Fill Dropdowns
         cities.forEach(city => {
-            // Add to dropdowns
-            const option = new Option(city.name, city.name);
-            dom.startSelect.add(option.cloneNode(true));
-            dom.endSelect.add(new Option(city.name, city.name));
+            // Dropdown Option
+            els.startSelect.add(new Option(city.name, city.name));
+            els.endSelect.add(new Option(city.name, city.name));
 
-            // Add Marker to Map
+            // Map Marker
             const marker = L.marker([city.lat, city.lon]).addTo(map);
-            marker.bindPopup(`<b>${city.name}</b><br>Click to set as Start/End`);
-            marker.on('click', () => handleMarkerClick(city.name));
-            cityMarkers[city.name] = marker;
-        });
-    } catch (error) {
-        console.error('Failed to load cities', error);
-        alert('Could not connect to API. Make sure the backend is running.');
-    }
-}
-
-function handleMarkerClick(cityName) {
-    if (dom.startSelect.value === "") {
-        dom.startSelect.value = cityName;
-    } else if (dom.endSelect.value === "") {
-        dom.endSelect.value = cityName;
-    } else {
-        // Reset and start over
-        dom.startSelect.value = cityName;
-        dom.endSelect.value = "";
-    }
-}
-
-dom.optimizeBtn.addEventListener('click', async () => {
-    const start = dom.startSelect.value;
-    const end = dom.endSelect.value;
-
-    if (!start || !end) {
-        alert('Please select both Origin and Destination');
-        return;
-    }
-
-    if (start === end) {
-        alert('Origin and Destination cannot be the same');
-        return;
-    }
-
-    // Set Loading State
-    setLoading(true);
-
-    try {
-        const response = await axios.post(`${API_URL}/optimize`, {
-            start_node: start,
-            end_node: end
+            marker.bindPopup(`<b>${city.name}</b>`);
+            marker.on('click', () => {
+                // Auto-select logic
+                if (els.startSelect.value === "") els.startSelect.value = city.name;
+                else els.endSelect.value = city.name;
+            });
+            layers.markers.push(marker);
         });
 
-        currentResult = response.data;
-        displayResults(currentResult);
     } catch (error) {
-        console.error(error);
-        alert('Optimization failed. Try different cities.');
-    } finally {
-        setLoading(false);
-    }
-});
-
-function setLoading(isLoading) {
-    if (isLoading) {
-        dom.optimizeBtn.disabled = true;
-        dom.optimizeBtn.textContent = 'Optimizing...';
-    } else {
-        dom.optimizeBtn.disabled = false;
-        dom.optimizeBtn.textContent = 'Find Optimized Route';
+        console.error("Failed to load cities:", error);
+        alert("Cannot connect to Server. Is the backend running?");
     }
 }
 
-function displayResults(data) {
-    // Clear previous lines
-    if (baselineLayer) map.removeLayer(baselineLayer);
-    if (optimizedLayer) map.removeLayer(optimizedLayer);
+// --- Interaction Logic ---
+function setupEventListeners() {
+    els.optimizeBtn.addEventListener('click', async () => {
+        const start = els.startSelect.value;
+        const end = els.endSelect.value;
 
-    // Draw Baseline (Dashed Orange)
-    if (data.base_coords && data.base_coords.length > 0) {
-        baselineLayer = L.polyline(data.base_coords, {
-            color: '#f59e0b',
-            weight: 3,
-            dashArray: '10, 10',
-            opacity: 0.7
-        }).addTo(map);
-    }
+        if (!start || !end) return alert("Please select both Origin and Destination.");
+        if (start === end) return alert("Start and End cities cannot be the same.");
 
-    // Draw Optimized (Solid Green)
-    if (data.opt_coords && data.opt_coords.length > 0) {
-        optimizedLayer = L.polyline(data.opt_coords, {
-            color: '#10b981',
-            weight: 5,
-            opacity: 0.9
-        }).addTo(map);
-    }
+        // UI State: Loading
+        els.optimizeBtn.textContent = "Processing AI Optimization...";
+        els.optimizeBtn.disabled = true;
 
-    // Fit map to show both routes
-    const allCoords = [...data.base_coords, ...data.opt_coords];
-    if (allCoords.length > 0) {
-        map.fitBounds(L.latLngBounds(allCoords), { padding: [50, 50] });
-    }
+        try {
+            // Call API
+            const res = await axios.post(`${API_URL}/optimize`, {
+                start_node: start,
+                end_node: end
+            });
 
-    // Update KPIs
-    animateValue(dom.kpiSaved, data.time_saved, ' min');
-    animateValue(dom.kpiBaseline, data.baseline_time, ' min');
-    animateValue(dom.kpiOptimized, data.optimized_time, ' min');
+            // Handle Success
+            currentResults = res.data;
+            displayResults(currentResults);
 
-    // Cost KPIs
-    animateValue(dom.kpiBaseCost, '$' + data.baseline_cost, '');
-    animateValue(dom.kpiOptCost, '$' + data.optimized_cost, '');
-    animateValue(dom.kpiCostSaved, '$' + data.cost_saved, '');
-
-    animateValue(dom.kpiEfficiency, data.efficiency_gain, '%');
-
-    // Show Panel
-    dom.resultsPanel.classList.remove('hidden');
-}
-
-function animateValue(element, value, unit) {
-    element.textContent = value + unit;
-    // Simple animation could be added here
-}
-
-dom.downloadBtn.addEventListener('click', () => {
-    if (!currentResult) return;
-
-    const params = new URLSearchParams({
-        start_node: currentResult.start_node,
-        end_node: currentResult.end_node,
-        opt_time: currentResult.optimized_time,
-        base_time: currentResult.baseline_time
+        } catch (error) {
+            console.error(error);
+            alert("Optimization failed. Please try again.");
+        } finally {
+            // UI State: Ready
+            els.optimizeBtn.textContent = "Find Optimized Route";
+            els.optimizeBtn.disabled = false;
+        }
     });
 
-    window.open(`${API_URL}/report?${params.toString()}`, '_blank');
-});
+    els.downloadBtn.addEventListener('click', () => {
+        if (!currentResults) return;
+        const params = new URLSearchParams({
+            start_node: currentResults.start_node,
+            end_node: currentResults.end_node,
+            opt_time: currentResults.optimized_time,
+            base_time: currentResults.baseline_time
+        });
+        window.open(`${API_URL}/report?${params.toString()}`, '_blank');
+    });
+}
 
-// Initialize
-init();
+// --- Visualization Logic ---
+function displayResults(data) {
+    // 1. Clear Old Layers
+    if (layers.baseline) map.removeLayer(layers.baseline);
+    if (layers.optimized) map.removeLayer(layers.optimized);
+
+    // 2. Draw Baseline (Orange Dashed)
+    if (data.base_coords && data.base_coords.length > 0) {
+        layers.baseline = L.polyline(data.base_coords, {
+            color: '#f59e0b', // Orange
+            weight: 4,
+            dashArray: '10, 10',
+            opacity: 0.8
+        }).addTo(map);
+    }
+
+    // 3. Draw Optimized (Green Solid)
+    if (data.opt_coords && data.opt_coords.length > 0) {
+        layers.optimized = L.polyline(data.opt_coords, {
+            color: '#10b981', // Green
+            weight: 6,
+            opacity: 1
+        }).addTo(map);
+    }
+
+    // 4. Fit Map View
+    const allPoints = [...data.base_coords, ...data.opt_coords];
+    if (allPoints.length > 0) {
+        map.fitBounds(L.latLngBounds(allPoints), { padding: [50, 50] });
+    }
+
+    // 5. Update Metrics
+    els.valTimeSaved.textContent = `${data.time_saved} min`;
+    els.valBaseTime.textContent = `${data.baseline_time} min`;
+    els.valOptTime.textContent = `${data.optimized_time} min`;
+
+    els.valBaseCost.textContent = `$${data.baseline_cost}`;
+    els.valOptCost.textContent = `$${data.optimized_cost}`;
+
+    els.valEfficiency.textContent = `+${data.efficiency_gain}%`;
+
+    // 6. Show Panel
+    els.resultsPanel.classList.remove('hidden');
+}
+
+// Start
+initApp();
