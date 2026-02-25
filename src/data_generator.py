@@ -54,52 +54,73 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     d = R * c
     return d
 
-def generate_logistics_data(num_records=500, num_cities=30, data_path="data/logistics_data.csv"):
+def generate_logistics_data(num_records=1000, num_cities=30, data_path="data/logistics_data.csv"):
     """
-    Generates a synthetic logistics dataset using REAL locations and saves it to a CSV file.
+    Generates a synthetic logistics dataset using REAL locations.
+    Ensures that every pair of cities is connected to allow direct routes.
     """
-    # Use the defined list of real cities
     cities = CITIES[:num_cities]
-    
     data = []
     
-    # Ensure full connectivity (mesh) or random? 
-    # Let's generate random routes from this set
-    for _ in range(num_records):
-        start = np.random.choice(cities)
-        end = np.random.choice(cities)
-        
-        while start['name'] == end['name']:
-            end = np.random.choice(cities)
+    # 1. First, ensure EVERY city pair has at least one edge (Direct connection)
+    print("Generating base city connectivity...")
+    for i in range(len(cities)):
+        for j in range(len(cities)):
+            if i == j: continue
             
-        dist = haversine_distance(start['lat'], start['lon'], end['lat'], end['lon'])
-        
-        # Add noise to distance to simulate road winding? 
-        # For simplicity, we keep it as "flight distance" or multiply by a factor (e.g. 1.2x)
-        road_distance = dist * 1.2
-        
-        record = {
-            "start_location": start['name'],
-            "start_lat": start['lat'],
-            "start_lon": start['lon'],
-            "end_location": end['name'],
-            "end_lat": end['lat'],
-            "end_lon": end['lon'],
-            "distance_km": road_distance,
-            "delivery_demand": np.random.randint(10, 100),
-            "fuel_cost_per_km": np.random.uniform(0.1, 0.3),
-            "traffic_factor": np.random.uniform(1.0, 2.5),
-            "time_of_day": np.random.choice(['morning', 'afternoon', 'evening', 'night'])
-        }
-        data.append(record)
+            start = cities[i]
+            end = cities[j]
+            dist = haversine_distance(start['lat'], start['lon'], end['lat'], end['lon'])
+            road_distance = dist * 1.15  # 15% winding road factor
+            
+            # Create a base record for this pair
+            record = {
+                "start_location": start['name'],
+                "start_lat": start['lat'],
+                "start_lon": start['lon'],
+                "end_location": end['name'],
+                "end_lat": end['lat'],
+                "end_lon": end['lon'],
+                "distance_km": round(road_distance, 2),
+                "delivery_demand": np.random.randint(10, 100),
+                "fuel_cost_per_km": round(np.random.uniform(0.12, 0.25), 2),
+                "traffic_factor": round(np.random.uniform(1.0, 1.8), 2),
+                "time_of_day": np.random.choice(['morning', 'afternoon', 'evening', 'night'])
+            }
+            data.append(record)
+
+    # 2. Add extra random records to simulate different conditions on the same routes
+    print("Adding variety to route conditions...")
+    remaining_records = num_records - len(data)
+    if remaining_records > 0:
+        for _ in range(remaining_records):
+            start = np.random.choice(cities)
+            end = np.random.choice(cities)
+            while start['name'] == end['name']:
+                end = np.random.choice(cities)
+                
+            dist = haversine_distance(start['lat'], start['lon'], end['lat'], end['lon'])
+            road_distance = dist * 1.15
+            
+            record = {
+                "start_location": start['name'],
+                "start_lat": start['lat'],
+                "start_lon": start['lon'],
+                "end_location": end['name'],
+                "end_lat": end['lat'],
+                "end_lon": end['lon'],
+                "distance_km": round(road_distance, 2),
+                "delivery_demand": np.random.randint(10, 100),
+                "fuel_cost_per_km": round(np.random.uniform(0.12, 0.25), 2),
+                "traffic_factor": round(np.random.uniform(1.0, 3.0), 2), # More variation
+                "time_of_day": np.random.choice(['morning', 'afternoon', 'evening', 'night'])
+            }
+            data.append(record)
 
     df = pd.DataFrame(data)
-
-    # Create directory if it doesn't exist
     os.makedirs(os.path.dirname(data_path), exist_ok=True)
-    
     df.to_csv(data_path, index=False)
-    print(f"Generated {num_records} real-world records and saved to {data_path}")
+    print(f"Dataset generated with {len(df)} records. Saved to {data_path}")
 
 if __name__ == '__main__':
     generate_logistics_data(num_records=500)
