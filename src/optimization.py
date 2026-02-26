@@ -29,23 +29,41 @@ def find_optimized_route(graph, model, start_node, end_node, time_of_day='aftern
     Returns:
         tuple: A tuple containing the path (list of nodes) and total predicted time.
     """
-    # Use the ML model to predict travel time (edge weight)
-    def weight_func(u, v, d):
+    # Define a composite weight: Priority = Travel Time (predicted) + Fuel Cost (distance)
+    def composite_weight(u, v, d):
         edge_data = graph.get_edge_data(u, v)
-        # Create a DataFrame for prediction
+        # 1. Predict Travel Time
         feature_df = pd.DataFrame([{
             'distance_km': edge_data['distance'],
             'delivery_demand': edge_data['demand'],
             'traffic_factor': edge_data['traffic'],
             'time_of_day': time_of_day
         }])
-        # Predict time
-        return model.predict(feature_df)[0]
+        predicted_time = model.predict(feature_df)[0]
+        
+        # 2. Add a penalty for extreme detours to keep paths logical (Distance penalty)
+        # This prevents picking a 200km path to save 5 mins over a 50km path
+        distance_penalty = edge_data['distance'] * 0.5 
+        
+        return predicted_time + distance_penalty
 
     try:
-        # Find the shortest path using Dijkstra's algorithm with the ML model's prediction as weight
-        path = nx.dijkstra_path(graph, source=start_node, target=end_node, weight=weight_func)
-        total_time = nx.dijkstra_path_length(graph, source=start_node, target=end_node, weight=weight_func)
+        # Optimization Goal: Minimize Time AND Distance (Logical Routing)
+        path = nx.dijkstra_path(graph, source=start_node, target=end_node, weight=composite_weight)
+        
+        # Calculate final predicted time for results panel
+        total_time = 0
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i+1]
+            edge_data = graph.get_edge_data(u, v)
+            feature_df = pd.DataFrame([{
+                'distance_km': edge_data['distance'],
+                'delivery_demand': edge_data['demand'],
+                'traffic_factor': edge_data['traffic'],
+                'time_of_day': time_of_day
+            }])
+            total_time += model.predict(feature_df)[0]
+            
         return path, total_time
     except nx.NetworkXNoPath:
         return None, None

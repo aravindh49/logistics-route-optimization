@@ -17,7 +17,7 @@ def main():
 
     # Step 1: Generate Data if it doesn't exist
     print("\n[1/7] Generating synthetic data...")
-    generate_logistics_data(num_records=500, num_cities=30, data_path="data/logistics_data.csv")
+    generate_logistics_data(num_records=2000, num_cities=30, data_path="data/logistics_data.csv")
 
     # Step 2: Preprocess Data
     print("\n[2/7] Preprocessing data...")
