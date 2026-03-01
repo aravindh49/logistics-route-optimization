@@ -7,7 +7,7 @@ import pandas as pd
 import joblib
 import os
 
-from src.optimization import create_graph_from_data, find_optimized_route, find_baseline_route, calculate_path_cost
+from src.optimization import optimize_real_route
 from src.generate_pdf_report import create_pdf_report
 
 # --- Application Setup ---
@@ -28,17 +28,24 @@ app.mount("/static", StaticFiles(directory="web"), name="static")
 # --- Global Resources ---
 resources = {
     "df": None,
-    "model": None,
-    "graph": None
+    "tn_graph": None
 }
 
 def load_resources():
-    """Loads CSV data, Model, and Graph into memory on startup."""
+    """Loads CSV data and OSMNX Graph into memory on startup."""
     try:
         print("Creating Resources...")
         resources["df"] = pd.read_csv("data/logistics_data.csv")
-        resources["model"] = joblib.load("models/delivery_time_predictor.pkl")
-        resources["graph"] = create_graph_from_data(resources["df"])
+        
+        graph_path = "data/tn_highways.graphml"
+        if os.path.exists(graph_path):
+            print(f"Loading GraphML from {graph_path}...")
+            import osmnx as ox
+            resources["tn_graph"] = ox.load_graphml(graph_path)
+            print(f"✅ Loaded GraphML with {len(resources['tn_graph'])} nodes.")
+        else:
+            print("⚠️ tn_highways.graphml not found! Run download script first.")
+
         print("✅ Resources Loaded Successfully.")
     except Exception as e:
         print(f"❌ Error loading resources: {e}")
@@ -64,7 +71,6 @@ def get_cities():
     if df is None:
         raise HTTPException(status_code=500, detail="Data not loaded")
     
-    # Extract Start and End cities to ensure we get all unique locations
     start_cities = df[['start_location', 'start_lat', 'start_lon']].rename(
         columns={'start_location': 'name', 'start_lat': 'lat', 'start_lon': 'lon'}
     )
@@ -77,49 +83,48 @@ def get_cities():
 
 @app.post("/optimize")
 def optimize_route(request: OptimizationRequest):
-    """Calculates the best route vs baseline."""
-    graph = resources["graph"]
-    model = resources["model"]
+    """Calculates the best route vs baseline using Real Road Network (OSMNX)."""
+    df = resources["df"]
     start = request.start_node
     end = request.end_node
 
-    if not graph or not model:
+    if df is None:
         raise HTTPException(status_code=500, detail="System not ready")
 
-    if start not in graph.nodes or end not in graph.nodes:
+    # Get coordinates
+    start_data = df[df['start_location'] == start].iloc[0] if not df[df['start_location'] == start].empty else None
+    end_data = df[df['end_location'] == end].iloc[0] if not df[df['end_location'] == end].empty else None
+
+    if start_data is None or end_data is None:
         raise HTTPException(status_code=404, detail="City not found in network")
+        
+    start_lat, start_lon = start_data['start_lat'], start_data['start_lon']
+    end_lat, end_lon = end_data['end_lat'], end_data['end_lon']
 
-    # 1. Calculate Optimized Route (AI)
-    opt_path, opt_time = find_optimized_route(graph, model, start, end)
+    # 1. Calculate Routes via OSMNX Real Map
+    sim_results = optimize_real_route(resources["tn_graph"], start_lat, start_lon, end_lat, end_lon)
+
+    if not sim_results:
+        raise HTTPException(status_code=400, detail="No route found between coordinates")
+
+    # Metrics
+    opt_time = sim_results['ai_time']
+    base_time = sim_results['baseline_time']
+    opt_cost = sim_results['ai_cost']
+    base_cost = sim_results['baseline_cost']
     
-    # 2. Calculate Baseline Route (Distance)
-    base_path, base_time = find_baseline_route(graph, start, end)
-
-    if not opt_path:
-        raise HTTPException(status_code=400, detail="No route found")
-
-    # 3. Cost Calculations
-    opt_cost = calculate_path_cost(graph, opt_path)
-    base_cost = calculate_path_cost(graph, base_path)
-
-    # 4. Guarantee optimization: if AI predicts a worse time, fallback to baseline
+    # 2. Guarantee optimization: if AI predicts a worse time, fallback to baseline
     if opt_time > base_time:
         opt_time = base_time
-        opt_path = base_path
         opt_cost = base_cost
+        sim_results['ai_coords'] = sim_results['baseline_coords']
 
-    # 5. Metrics
+    # 3. Efficiency calculations requested by user
     time_saved = base_time - opt_time
     cost_saved = base_cost - opt_cost
-    efficiency = (time_saved / base_time * 100) if base_time > 0 else 0
-
-    # 5. Coordinates for Mapping
-    df = resources["df"]
-    # Quick lookup map
-    city_map = {}
-    for _, row in df.iterrows():
-        city_map[row['start_location']] = [row['start_lat'], row['start_lon']]
-        city_map[row['end_location']] = [row['end_lat'], row['end_lon']]
+    
+    time_efficiency = (time_saved / base_time * 100) if base_time > 0 else 0
+    cost_efficiency = (cost_saved / base_cost * 100) if base_cost > 0 else 0
 
     return {
         "start_node": start,
@@ -130,16 +135,18 @@ def optimize_route(request: OptimizationRequest):
         "baseline_cost": round(base_cost, 2),
         "time_saved": round(time_saved, 2),
         "cost_saved": round(cost_saved, 2),
-        "efficiency_gain": round(efficiency, 2),
-        "opt_coords": [city_map.get(c) for c in opt_path],
-        "base_coords": [city_map.get(c) for c in base_path]
+        "time_efficiency": round(time_efficiency, 2),
+        "cost_efficiency": round(cost_efficiency, 2),
+        "baseline_score": sim_results['baseline_score'],
+        "ai_score": sim_results['ai_score'],
+        "opt_coords": sim_results['ai_coords'],
+        "base_coords": sim_results['baseline_coords']
     }
 
 @app.get("/report")
-def get_report(start_node: str, end_node: str, opt_time: float, base_time: float):
+def get_report(start_node: str, end_node: str, opt_time: float, base_time: float, opt_cost: float, base_cost: float, time_eff: float, cost_eff: float, ai_score: float, base_score: float):
     """Generates and returns a PDF report."""
     time_saved = float(base_time) - float(opt_time)
-    efficiency = (time_saved / float(base_time) * 100) if float(base_time) > 0 else 0
     
     markdown_content = f"""
 # Logistics Route Optimization Report
@@ -147,15 +154,18 @@ def get_report(start_node: str, end_node: str, opt_time: float, base_time: float
 ## Executive Summary
 Optimized delivery from **{start_node}** to **{end_node}**.
 
-## Results
+## Detailed Metrics
 
-| Metric | Baseline | AI Optimized | Improvement |
+| Metric | Baseline Route | AI Optimized Route | Efficiency Gain |
 | :--- | :--- | :--- | :--- |
-| **Total Time** | {base_time} min | **{opt_time} min** | **{round(time_saved, 2)} min** |
-| **Efficiency** | - | - | **{round(efficiency, 2)}%** |
+| **Total Time** | {base_time} min | **{opt_time} min** | **+{round(time_eff, 2)}%** |
+| **Fuel Cost** | ${base_cost} | **${opt_cost}** | **+{round(cost_eff, 2)}%** |
+| **Route Quality Score** | {base_score} | **{ai_score}** | - |
+
+> *Note: Route Quality Score is calculated as a weighted sum of Time, Fuel, and Distance, where lower is better.*
 
 ## Conclusion
-The AI-Optimized route provides a significantly faster delivery path.
+The AI-Optimized route uses the real physical road network (via OSM) coupled with dynamic simulated traffic constraints to provide the most logically efficient path.
     """
     
     output_path = "reports/optimization_report.pdf"

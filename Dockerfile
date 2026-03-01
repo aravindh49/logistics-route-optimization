@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
+# Download osmnx graph into the image to support offline / fast routing
+RUN python download_graph.py
+
 # Expose the port the app runs on
 EXPOSE 8000
 

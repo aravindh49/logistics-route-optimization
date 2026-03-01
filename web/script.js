@@ -144,7 +144,13 @@ function setupEventListeners() {
             start_node: currentResults.start_node,
             end_node: currentResults.end_node,
             opt_time: currentResults.optimized_time,
-            base_time: currentResults.baseline_time
+            base_time: currentResults.baseline_time,
+            opt_cost: currentResults.optimized_cost,
+            base_cost: currentResults.baseline_cost,
+            time_eff: currentResults.time_efficiency,
+            cost_eff: currentResults.cost_efficiency,
+            ai_score: currentResults.ai_score,
+            base_score: currentResults.baseline_score
         });
         window.open(`${API_URL}/report?${params.toString()}`, '_blank');
     });
@@ -188,7 +194,10 @@ function displayResults(data) {
     els.valBaseCost.textContent = `$${data.baseline_cost}`;
     els.valOptCost.textContent = `$${data.optimized_cost}`;
 
-    els.valEfficiency.textContent = `+${data.efficiency_gain}%`;
+    document.getElementById('val-time-eff').textContent = `+${data.time_efficiency}%`;
+    document.getElementById('val-cost-eff').textContent = `+${data.cost_efficiency}%`;
+    document.getElementById('val-base-score').textContent = `${data.baseline_score}`;
+    document.getElementById('val-opt-score').textContent = `${data.ai_score}`;
 
     // 6. Show Panel
     els.resultsPanel.classList.remove('hidden');

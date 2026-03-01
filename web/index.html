@@ -87,9 +87,25 @@
                     </div>
                 </div>
 
-                <div class="kpi-card efficiency">
-                    <span class="label">Efficiency Gain</span>
-                    <span class="value" id="val-efficiency">--</span>
+                <div class="kpi-card efficiency" style="text-align: left; padding: 1.5rem;">
+                    <h4 style="margin-top: 0; margin-bottom: 1rem; color: #fff;">Efficiency Metrics</h4>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span class="label">Time Efficiency</span>
+                        <span class="value-sm" id="val-time-eff" style="color: #10b981;">--</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span class="label">Cost Efficiency</span>
+                        <span class="value-sm" id="val-cost-eff" style="color: #10b981;">--</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+                        <span class="label">Baseline Score</span>
+                        <span class="value-sm" id="val-base-score">--</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                        <span class="label">AI Route Score</span>
+                        <span class="value" id="val-opt-score" style="color: #3b82f6;">--</span>
+                    </div>
                 </div>
 
                 <button id="download-btn" class="btn-secondary">Download Report (PDF)</button>

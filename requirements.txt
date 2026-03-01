@@ -11,3 +11,5 @@ python-multipart
 markdown
 xhtml2pdf
 aiofiles
+osmnx
+geopandas
