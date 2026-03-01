@@ -7,13 +7,16 @@ import pandas as pd
 import joblib
 import os
 
-from src.optimization import optimize_real_route
-from src.generate_pdf_report import create_pdf_report
+from src.engines.graph_engine import get_dynamic_road_graph
+from src.engines.weight_engine import apply_conditions
+from src.engines.eco_engine import calculate_emission
+from src.engines.optimization_engine import optimize_single_segment, optimize_multi_stop_tsp
+import osmnx as ox
 
 # --- Application Setup ---
 app = FastAPI(title="Logistics Optimization API | TamilNaduAI")
 
-# Enable CORS (Cross-Origin Resource Sharing)
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,51 +25,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve Static Files (CSS/JS)
 app.mount("/static", StaticFiles(directory="web"), name="static")
 
 # --- Global Resources ---
 resources = {
     "df": None,
-    "tn_graph": None
 }
 
 def load_resources():
-    """Loads CSV data and OSMNX Graph into memory on startup."""
     try:
         print("Creating Resources...")
         resources["df"] = pd.read_csv("data/logistics_data.csv")
-        
-        graph_path = "data/tn_highways.graphml"
-        if os.path.exists(graph_path):
-            print(f"Loading GraphML from {graph_path}...")
-            import osmnx as ox
-            resources["tn_graph"] = ox.load_graphml(graph_path)
-            print(f"✅ Loaded GraphML with {len(resources['tn_graph'])} nodes.")
-        else:
-            print("⚠️ tn_highways.graphml not found! Run download script first.")
-
         print("✅ Resources Loaded Successfully.")
     except Exception as e:
         print(f"❌ Error loading resources: {e}")
 
-# Load immediately
 load_resources()
 
 # --- Data Models ---
-class OptimizationRequest(BaseModel):
+class ScenarioSettings(BaseModel):
+    heavy_rain: bool = False
+    accident_zone: bool = False
+    rush_hour: bool = False
+
+class SingleOptimizationRequest(BaseModel):
     start_node: str
     end_node: str
+    vehicle_type: str = "diesel"
+    scenario: ScenarioSettings = ScenarioSettings()
+
+class MultiOptimizationRequest(BaseModel):
+    origin: str
+    stops: list[str] = []
+    destination: str
+    vehicle_type: str = "diesel"
+    scenario: ScenarioSettings = ScenarioSettings()
 
 # --- Endpoints ---
-
 @app.get("/")
 async def read_index():
     return FileResponse('web/index.html')
 
 @app.get("/cities")
 def get_cities():
-    """Returns a list of unique cities with coordinates for the dropdowns."""
     df = resources["df"]
     if df is None:
         raise HTTPException(status_code=500, detail="Data not loaded")
@@ -81,73 +82,106 @@ def get_cities():
     all_cities = pd.concat([start_cities, end_cities]).drop_duplicates(subset=['name']).sort_values('name')
     return {"cities": all_cities.to_dict(orient='records')}
 
-@app.post("/optimize")
-def optimize_route(request: OptimizationRequest):
-    """Calculates the best route vs baseline using Real Road Network (OSMNX)."""
-    df = resources["df"]
-    start = request.start_node
-    end = request.end_node
+def get_city_coords(df, city_name):
+    # Lookup city coordinates from data
+    for prefix in ['start', 'end']:
+        match = df[df[f'{prefix}_location'] == city_name]
+        if not match.empty:
+            return match.iloc[0][f'{prefix}_lat'], match.iloc[0][f'{prefix}_lon']
+    raise HTTPException(status_code=404, detail=f"City {city_name} not found")
 
+@app.post("/optimize")
+@app.post("/optimize-single")
+def optimize_single(request: SingleOptimizationRequest):
+    df = resources["df"]
     if df is None:
         raise HTTPException(status_code=500, detail="System not ready")
 
-    # Get coordinates
-    start_data = df[df['start_location'] == start].iloc[0] if not df[df['start_location'] == start].empty else None
-    end_data = df[df['end_location'] == end].iloc[0] if not df[df['end_location'] == end].empty else None
+    start_lat, start_lon = get_city_coords(df, request.start_node)
+    end_lat, end_lon = get_city_coords(df, request.end_node)
 
-    if start_data is None or end_data is None:
-        raise HTTPException(status_code=404, detail="City not found in network")
-        
-    start_lat, start_lon = start_data['start_lat'], start_data['start_lon']
-    end_lat, end_lon = end_data['end_lat'], end_data['end_lon']
-
-    # 1. Calculate Routes via OSMNX Real Map
-    sim_results = optimize_real_route(resources["tn_graph"], start_lat, start_lon, end_lat, end_lon)
-
-    if not sim_results:
-        raise HTTPException(status_code=400, detail="No route found between coordinates")
-
-    # Metrics
-    opt_time = sim_results['ai_time']
-    base_time = sim_results['baseline_time']
-    opt_cost = sim_results['ai_cost']
-    base_cost = sim_results['baseline_cost']
+    # 1. Fetch Graph
+    coords = [[start_lat, start_lon], [end_lat, end_lon]]
+    G = get_dynamic_road_graph(coords)
     
-    # 2. Guarantee optimization: if AI predicts a worse time, fallback to baseline
-    if opt_time > base_time:
-        opt_time = base_time
-        opt_cost = base_cost
-        sim_results['ai_coords'] = sim_results['baseline_coords']
+    # 2. Apply Dynamic Conditions via Weight Engine
+    G = apply_conditions(G, request.scenario)
 
-    # 3. Efficiency calculations requested by user
-    time_saved = base_time - opt_time
-    cost_saved = base_cost - opt_cost
+    # 3. Find Route using Optimization Engine
+    start_point = ox.distance.nearest_nodes(G, start_lon, start_lat)
+    end_point = ox.distance.nearest_nodes(G, end_lon, end_lat)
     
-    time_efficiency = (time_saved / base_time * 100) if base_time > 0 else 0
-    cost_efficiency = (cost_saved / base_cost * 100) if base_cost > 0 else 0
+    # Baseline Path (distance)
+    base_coords, base_len, base_btime, _ = optimize_single_segment(G, start_point, end_point, weight='length')
+    # AI Optimized Path
+    ai_coords, ai_len, ai_btime, ai_time = optimize_single_segment(G, start_point, end_point, weight='ai_time_min')
+
+    if not ai_coords:
+        raise HTTPException(status_code=400, detail="No route found")
+
+    # 4. Eco Engine (Fuel and CO2 calculation)
+    base_fuel, base_co2 = calculate_emission(base_len, request.vehicle_type)
+    ai_fuel, ai_co2 = calculate_emission(ai_len, request.vehicle_type)
+
+    # Format Metrics to match existing UI
+    time_saved = base_btime - ai_time
+    cost_saved = base_fuel - ai_fuel
+    time_efficiency = (time_saved / base_btime * 100) if base_btime > 0 else 0
+    cost_efficiency = (cost_saved / base_fuel * 100) if base_fuel > 0 else 0
+    
+    alpha, beta, gamma = 1.0, 10.0, 0.5
+    base_score = round((alpha * base_btime) + (beta * base_fuel) + (gamma * base_len), 2)
+    ai_score = round((alpha * ai_time) + (beta * ai_fuel) + (gamma * ai_len), 2)
 
     return {
-        "start_node": start,
-        "end_node": end,
-        "optimized_time": round(opt_time, 2),
-        "baseline_time": round(base_time, 2),
-        "optimized_cost": round(opt_cost, 2),
-        "baseline_cost": round(base_cost, 2),
+        "start_node": request.start_node,
+        "end_node": request.end_node,
+        "optimized_time": round(ai_time, 2),
+        "baseline_time": round(base_btime, 2),
+        "optimized_cost": round(ai_fuel, 2),
+        "baseline_cost": round(base_fuel, 2),
         "time_saved": round(time_saved, 2),
         "cost_saved": round(cost_saved, 2),
         "time_efficiency": round(time_efficiency, 2),
         "cost_efficiency": round(cost_efficiency, 2),
-        "baseline_score": sim_results['baseline_score'],
-        "ai_score": sim_results['ai_score'],
-        "opt_coords": sim_results['ai_coords'],
-        "base_coords": sim_results['baseline_coords']
+        "baseline_score": base_score,
+        "ai_score": ai_score,
+        "opt_coords": ai_coords,
+        "base_coords": base_coords,
+        "co2_emission": round(ai_co2, 2)
+    }
+
+@app.post("/optimize-multi")
+def optimize_multi(request: MultiOptimizationRequest):
+    df = resources["df"]
+    
+    # Extract all coords
+    all_cities = [request.origin] + request.stops + [request.destination]
+    coords_list = [get_city_coords(df, city) for city in all_cities]
+
+    G = get_dynamic_road_graph(coords_list)
+    G = apply_conditions(G, request.scenario)
+    
+    nodes_list = [ox.distance.nearest_nodes(G, lon, lat) for lat, lon in coords_list]
+    
+    ai_coords, ai_len, _, ai_time = optimize_multi_stop_tsp(G, nodes_list, weight='ai_time_min')
+    
+    if not ai_coords:
+        raise HTTPException(status_code=400, detail="Could not optimize multi-stop route")
+        
+    ai_fuel, ai_co2 = calculate_emission(ai_len, request.vehicle_type)
+    
+    return {
+        "optimized_path_coords": ai_coords,
+        "total_distance_km": round(ai_len, 2),
+        "total_time_min": round(ai_time, 2),
+        "fuel_used_liters": round(ai_fuel, 2),
+        "co2_emission_kg": round(ai_co2, 2)
     }
 
 @app.get("/report")
 def get_report(start_node: str, end_node: str, opt_time: float, base_time: float, opt_cost: float, base_cost: float, time_eff: float, cost_eff: float, ai_score: float, base_score: float):
     """Generates and returns a PDF report."""
-    time_saved = float(base_time) - float(opt_time)
-    
     markdown_content = f"""
 # Logistics Route Optimization Report
 
