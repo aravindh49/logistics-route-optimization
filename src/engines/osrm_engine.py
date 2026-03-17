@@ -1,4 +1,5 @@
 import requests
+import itertools
 
 def get_predefined_osrm_routes(start_lat, start_lon, end_lat, end_lon):
     """
@@ -47,20 +48,42 @@ def get_predefined_osrm_multi_routes(coords_list):
     """
     coords_str = ";".join([f"{lon},{lat}" for lat, lon in coords_list])
     
-    # Step 1: Solve TSP for optimal sequence
-    trip_url = f"http://router.project-osrm.org/trip/v1/driving/{coords_str}?roundtrip=false&source=first&destination=last"
+    # Step 1: Solve TSP optimal sequence manually via the Table Matrix API
+    table_url = f"http://router.project-osrm.org/table/v1/driving/{coords_str}"
     try:
-        r_trip = requests.get(trip_url, timeout=10)
-        data_trip = r_trip.json()
+        r_table = requests.get(table_url, timeout=10)
+        data_table = r_table.json()
         
-        if 'waypoints' not in data_trip or len(data_trip['waypoints']) == 0:
+        if 'durations' not in data_table:
             return None, None, None
             
-        # Re-order coordinates based on TSP response
-        waypoints = data_trip['waypoints']
-        sorted_coords = [None] * len(coords_list)
-        for i, wp in enumerate(waypoints):
-            sorted_coords[wp['waypoint_index']] = coords_list[i]
+        durations = data_table['durations']
+        n = len(coords_list)
+        
+        # Calculate optimal middle stops routing order
+        middle_indices = list(range(1, n-1))
+        best_duration = float('inf')
+        best_order = None
+        
+        # itertools.permutations takes fraction of a ms since max middle stops = 3 (3! = 6 checks)
+        for perm in itertools.permutations(middle_indices):
+            seq = [0] + list(perm) + [n-1]
+            current_duration = 0
+            for i in range(len(seq)-1):
+                d = durations[seq[i]][seq[i+1]]
+                if d is None:
+                    current_duration = float('inf')
+                    break
+                current_duration += d
+            
+            if current_duration < best_duration:
+                best_duration = current_duration
+                best_order = seq
+                
+        if not best_order:
+            best_order = list(range(n))
+            
+        sorted_coords = [coords_list[i] for i in best_order]
             
         # Step 2: Extract real, unbroken geometries using the standard Route API
         sorted_coords_str = ";".join([f"{lon},{lat}" for lat, lon in sorted_coords])
