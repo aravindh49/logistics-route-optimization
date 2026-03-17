@@ -86,6 +86,13 @@ body {
     outline: none;
     cursor: pointer;
     transition: 0.2s;
+    appearance: none; /* Hide default arrow to style cleaner if wanted, but fine to keep */
+}
+
+.input-group select option {
+    background-color: #1e293b;
+    color: #f8fafc;
+    padding: 10px;
 }
 
 .input-group select:hover {
@@ -273,4 +280,26 @@ body {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* --- Route Animations --- */
+.route-electric {
+    stroke-dasharray: 15, 20 !important;
+    animation: flowElectric 0.5s linear infinite !important;
+    filter: drop-shadow(0 0 6px #22d3ee) !important;
+}
+
+@keyframes flowElectric {
+    from { stroke-dashoffset: 35; }
+    to { stroke-dashoffset: 0; }
+}
+
+.route-diesel {
+    stroke-dasharray: 40, 20 !important;
+    animation: flowDiesel 1.5s linear infinite !important;
+}
+
+@keyframes flowDiesel {
+    from { stroke-dashoffset: 60; }
+    to { stroke-dashoffset: 0; }
 }

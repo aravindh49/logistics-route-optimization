@@ -14,3 +14,4 @@ aiofiles
 osmnx
 geopandas
 ortools
+requests

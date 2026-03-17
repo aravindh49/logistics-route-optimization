@@ -7,4 +7,9 @@ __pycache__/
 venv/
 env/
 
-# Data, reports, and models are tracked in this project.
+# Ignore large graph files and local request cache
+data/*.graphml
+data/**/*.graphml
+data/cached_graphs/
+data/*.osm
+cache/

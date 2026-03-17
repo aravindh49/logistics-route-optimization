@@ -20,6 +20,15 @@ const els = {
     valBaseCost: document.getElementById('val-base-cost'),
     valOptCost: document.getElementById('val-opt-cost'),
     valEfficiency: document.getElementById('val-efficiency'),
+    
+    // New Features
+    simRain: document.getElementById('sim-rain'),
+    simAccident: document.getElementById('sim-accident'),
+    simRush: document.getElementById('sim-rush'),
+    vehicleType: document.getElementById('vehicle-type'),
+    stopsContainer: document.getElementById('stops-container'),
+    addStopBtn: document.getElementById('add-stop-btn'),
+    valCo2: document.getElementById('val-co2'),
 };
 
 // Global State
@@ -27,7 +36,24 @@ let map;
 let layers = {
     baseline: null,
     optimized: null,
-    markers: []
+    markers: {} // Change to object for fast lookup
+};
+
+const LeafIcon = L.Icon.extend({
+    options: {
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    }
+});
+
+const mapIcons = {
+    default: new LeafIcon({iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png'}),
+    start: new LeafIcon({iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png'}),
+    end: new LeafIcon({iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png'}),
+    stop: new LeafIcon({iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png'})
 };
 let currentResults = null;
 
@@ -77,25 +103,31 @@ function initMap() {
 }
 
 async function loadCities() {
+    // Store loaded cities for generating stops dropdowns
+    window.cityOptions = '';
+    
     try {
         const res = await axios.get(`${API_URL}/cities`);
         const cities = res.data.cities;
 
         // Add Markers and Fill Dropdowns
         cities.forEach(city => {
+            const optionHTML = `<option value="${city.name}">${city.name}</option>`;
+            window.cityOptions += optionHTML;
+            
             // Dropdown Option
             els.startSelect.add(new Option(city.name, city.name));
             els.endSelect.add(new Option(city.name, city.name));
 
             // Map Marker
-            const marker = L.marker([city.lat, city.lon]).addTo(map);
+            const marker = L.marker([city.lat, city.lon], {icon: mapIcons.default}).addTo(map);
             marker.bindPopup(`<b>${city.name}</b>`);
             marker.on('click', () => {
                 // Auto-select logic
                 if (els.startSelect.value === "") els.startSelect.value = city.name;
                 else els.endSelect.value = city.name;
             });
-            layers.markers.push(marker);
+            layers.markers[city.name] = marker;
         });
 
     } catch (error) {
@@ -106,6 +138,24 @@ async function loadCities() {
 
 // --- Interaction Logic ---
 function setupEventListeners() {
+    // Add Stop Button Logic
+    els.addStopBtn.addEventListener('click', () => {
+        const stopDiv = document.createElement('div');
+        stopDiv.className = 'input-group stop-group';
+        stopDiv.style.marginBottom = '0.5rem';
+        stopDiv.style.display = 'flex';
+        stopDiv.style.gap = '0.5rem';
+        
+        stopDiv.innerHTML = `
+            <select class="stop-city" style="flex:1;">
+                <option value="" disabled selected>Select Stop...</option>
+                ${window.cityOptions}
+            </select>
+            <button class="btn-remove-stop" style="background:#ef4444; color:white; border:none; border-radius:8px; padding:0 0.8rem; cursor:pointer;" onclick="this.parentElement.remove()">X</button>
+        `;
+        els.stopsContainer.appendChild(stopDiv);
+    });
+
     els.optimizeBtn.addEventListener('click', async () => {
         const start = els.startSelect.value;
         const end = els.endSelect.value;
@@ -113,19 +163,50 @@ function setupEventListeners() {
         if (!start || !end) return alert("Please select both Origin and Destination.");
         if (start === end) return alert("Start and End cities cannot be the same.");
 
+        // Gather stops
+        const stopSelects = document.querySelectorAll('.stop-city');
+        const stops = Array.from(stopSelects).map(s => s.value).filter(val => val !== "");
+
+        // Gather scenario settings
+        const scenario = {
+            heavy_rain: els.simRain.checked,
+            accident_zone: els.simAccident.checked,
+            rush_hour: els.simRush.checked
+        };
+        const vehicle_type = els.vehicleType.value;
+
         // UI State: Loading
         els.optimizeBtn.textContent = "Processing AI Optimization...";
         els.optimizeBtn.disabled = true;
 
         try {
-            // Call API
-            const res = await axios.post(`${API_URL}/optimize`, {
-                start_node: start,
-                end_node: end
-            });
+            let res;
+            if (stops.length > 0) {
+                // Call Multi-Stop API
+                res = await axios.post(`${API_URL}/optimize-multi`, {
+                    origin: start,
+                    destination: end,
+                    stops: stops,
+                    vehicle_type: vehicle_type,
+                    scenario: scenario
+                });
+            } else {
+                // Call Single-Stop API
+                res = await axios.post(`${API_URL}/optimize-single`, {
+                    start_node: start,
+                    end_node: end,
+                    vehicle_type: vehicle_type,
+                    scenario: scenario
+                });
+            }
 
             // Handle Success
             currentResults = res.data;
+            currentResults.vehicle_type = vehicle_type;
+            if(stops.length > 0) {
+                currentResults.is_multi = true;
+                currentResults.stops = stops;
+            }
             displayResults(currentResults);
 
         } catch (error) {
@@ -162,42 +243,62 @@ function displayResults(data) {
     if (layers.baseline) map.removeLayer(layers.baseline);
     if (layers.optimized) map.removeLayer(layers.optimized);
 
+    // Normalize paths based on Single vs Multi response formats
+    const bCoords = data.base_coords || [];
+    const optCoords = data.opt_coords || data.optimized_path_coords || [];
+
+    // Adjust Marker Colors
+    Object.values(layers.markers).forEach(m => m.setIcon(mapIcons.default)); // Reset all
+    if (layers.markers[data.start_node]) layers.markers[data.start_node].setIcon(mapIcons.start);
+    if (layers.markers[data.end_node]) layers.markers[data.end_node].setIcon(mapIcons.end);
+    if (data.is_multi && data.stops) {
+        data.stops.forEach(s => {
+            if (layers.markers[s]) layers.markers[s].setIcon(mapIcons.stop);
+        });
+    }
+
     // 2. Draw Baseline (Orange thick border)
-    if (data.base_coords && data.base_coords.length > 0) {
-        layers.baseline = L.polyline(data.base_coords, {
+    if (bCoords.length > 0) {
+        layers.baseline = L.polyline(bCoords, {
             color: '#f59e0b', // Orange
             weight: 12,       // Thick enough to be seen under the green line
             opacity: 0.5
         }).addTo(map);
     }
 
-    // 3. Draw Optimized (Green Solid inner line)
-    if (data.opt_coords && data.opt_coords.length > 0) {
-        layers.optimized = L.polyline(data.opt_coords, {
-            color: '#10b981', // Green
+    // 3. Draw Optimized (Green/Cyan Animated inner line)
+    if (optCoords.length > 0) {
+        const isElectric = data.vehicle_type === 'electric';
+        layers.optimized = L.polyline(optCoords, {
+            color: isElectric ? '#0ea5e9' : '#10b981', // Blueish cyan for electric, green for diesel
             weight: 4,        // Thinner, sits strictly on top of orange
-            opacity: 1
+            opacity: 1,
+            className: isElectric ? 'route-electric' : 'route-diesel'
         }).addTo(map);
     }
 
     // 4. Fit Map View
-    const allPoints = [...data.base_coords, ...data.opt_coords];
+    const allPoints = [...bCoords, ...optCoords];
     if (allPoints.length > 0) {
         map.fitBounds(L.latLngBounds(allPoints), { padding: [50, 50] });
     }
 
-    // 5. Update Metrics
+    // 5. Update Metrics Safely
     els.valTimeSaved.textContent = `${data.time_saved} min`;
     els.valBaseTime.textContent = `${data.baseline_time} min`;
     els.valOptTime.textContent = `${data.optimized_time} min`;
 
-    els.valBaseCost.textContent = `$${data.baseline_cost}`;
-    els.valOptCost.textContent = `$${data.optimized_cost}`;
+    els.valBaseCost.textContent = data.is_multi ? `${data.baseline_cost} L` : `$${data.baseline_cost}`;
+    els.valOptCost.textContent = data.is_multi ? `${data.optimized_cost} L` : `$${data.optimized_cost}`;
 
-    document.getElementById('val-time-eff').textContent = `+${data.time_efficiency}%`;
-    document.getElementById('val-cost-eff').textContent = `+${data.cost_efficiency}%`;
+    document.getElementById('val-time-eff').textContent = data.time_efficiency > 0 ? `+${data.time_efficiency}%` : `${data.time_efficiency}%`;
+    document.getElementById('val-cost-eff').textContent = data.cost_efficiency > 0 ? `+${data.cost_efficiency}%` : `${data.cost_efficiency}%`;
     document.getElementById('val-base-score').textContent = `${data.baseline_score}`;
     document.getElementById('val-opt-score').textContent = `${data.ai_score}`;
+
+    if (els.valCo2) {
+        els.valCo2.textContent = `${data.co2_emission} kg`;
+    }
 
     // 6. Show Panel
     els.resultsPanel.classList.remove('hidden');

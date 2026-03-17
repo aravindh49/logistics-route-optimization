@@ -12,7 +12,7 @@ def haversine_dist(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-def get_dynamic_road_graph(coords: list):
+def get_dynamic_road_graph(coords: list, global_graph=None):
     """
     Dynamically downloads bounding box road network with caching and dynamic buffer.
     coords is a list of [lat, lon] lists representing all nodes to visit.
@@ -44,23 +44,39 @@ def get_dynamic_road_graph(coords: list):
     
     if max_dist < 100:
         margin = 0.1
+        custom_filter = '["highway"~"motorway|trunk|primary|secondary|tertiary"]'
     elif max_dist < 300:
         margin = 0.2
+        custom_filter = '["highway"~"motorway|trunk|primary|secondary"]'
     else:
         margin = 0.3
+        custom_filter = '["highway"~"motorway|trunk|primary"]'
 
     north = max(lats) + margin
     south = min(lats) - margin
+    common = min(lons) - margin
     east = max(lons) + margin
-    west = min(lons) - margin
-    
-    custom_filter = '["highway"~"motorway|trunk|primary|secondary|tertiary"]'
+    west = common
+
+    if global_graph is not None:
+        print("Extracting corridor subgraph from global pre-loaded map...")
+        start_truncate = time.time()
+        G_sub = ox.truncate.truncate_graph_bbox(global_graph, bbox=(west, south, east, north))
+        # Important: MUST copy the subgraph so weight engine modifiers don't pollute global graph
+        G_sub = G_sub.copy()
+        print(f"Extracted subgraph in {time.time() - start_truncate:.2f}s. Nodes: {len(G_sub)}")
+        # In case it's completely empty...
+        if len(G_sub) > 0:
+            return G_sub
+        else:
+            print("Subgraph extraction yielded empty graph. Falling back to Overpass download...")
+
+    print("Dynamically fetching new road network from Overpass...")
     G = ox.graph_from_bbox(bbox=(west, south, east, north), network_type="drive", custom_filter=custom_filter, simplify=True)
-    
     G = ox.add_edge_speeds(G)
     G = ox.add_edge_travel_times(G)
     
     ox.save_graphml(G, cache_path)
     
-    print(f"Downloaded and cached dynamic graph in {time.time() - start:.2f}s. Nodes: {len(G)}")
+    print(f"Downloaded dynamic graph in {time.time() - start:.2f}s. Nodes: {len(G)}")
     return G

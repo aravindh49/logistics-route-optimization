@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Logistics Optimizer | TamilNaduAI</title>
+    <title>AI Logistics Optimizer | RouteAI</title>
 
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -26,7 +26,7 @@
         <!-- Sidebar Control Panel -->
         <aside class="sidebar">
             <div class="brand">
-                <h1>TamilNadu<span>AI</span></h1>
+                <h1>Route<span>AI</span></h1>
                 <p>Logistics Optimization System</p>
             </div>
 
@@ -37,6 +37,10 @@
                         <option value="" disabled selected>Select Origin...</option>
                     </select>
                 </div>
+                <div id="stops-container"></div>
+                <button id="add-stop-btn" class="btn-secondary"
+                    style="margin-top:0.5rem; padding: 0.5rem; font-size: 0.8rem; margin-bottom:0.5rem;">+ Add
+                    Stop</button>
 
                 <div class="route-icon">
                     <div class="line"></div>
@@ -51,7 +55,22 @@
                     </select>
                 </div>
 
-                <!-- Future Extensibility: Add Simulator Dropdown here if needed later -->
+                <div class="input-group" style="margin-top: 1rem;">
+                    <label>Live Simulator</label>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem; color: #fff;">
+                        <label><input type="checkbox" id="sim-rain"> 🌧️ Heavy Rain</label>
+                        <label><input type="checkbox" id="sim-accident"> ⚠️ Accident on Highway</label>
+                        <label><input type="checkbox" id="sim-rush"> 🚗 Rush Hour</label>
+                    </div>
+                </div>
+
+                <div class="input-group" style="margin-top: 1rem;">
+                    <label>Eco-Logistics (Vehicle Type)</label>
+                    <select id="vehicle-type">
+                        <option value="diesel" selected>🚚 Diesel Truck</option>
+                        <option value="electric">⚡ Electric Van</option>
+                    </select>
+                </div>
 
                 <button id="optimize-btn" class="btn-primary">
                     Find Optimized Route
@@ -75,6 +94,11 @@
                     <div class="kpi-card">
                         <span class="label">AI Time</span>
                         <span class="value-sm" id="val-opt-time">--</span>
+                    </div>
+
+                    <div class="kpi-card highlight" style="background: rgba(16, 185, 129, 0.2);" id="co2-card">
+                        <span class="label">🌱 AI CO2 Emission</span>
+                        <span class="value" id="val-co2">--</span>
                     </div>
 
                     <div class="kpi-card">

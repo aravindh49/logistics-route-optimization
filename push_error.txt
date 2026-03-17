@@ -1,0 +1,7 @@
+remote: error: Trace: e391b4c8d9648af9c0b7db098af132b9155bf753a5c0f362f0f6cbda41cd009e        
+remote: error: See https://gh.io/lfs for more information.        
+remote: error: File data/cached_graphs/27e473df6997434e13706efaad1cbe92.graphml is 151.70 MB; this exceeds GitHub's file size limit of 100.00 MB        
+remote: error: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/aravindh49/logistics-route-optimization.git
+ ! [remote rejected] main -> main (pre-receive hook declined)
+error: failed to push some refs to 'https://github.com/aravindh49/logistics-route-optimization.git'
