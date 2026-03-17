@@ -85,20 +85,25 @@ def get_predefined_osrm_multi_routes(coords_list):
             
         sorted_coords = [coords_list[i] for i in best_order]
             
-        # Step 2: Extract real, unbroken geometries using the standard Route API
-        sorted_coords_str = ";".join([f"{lon},{lat}" for lat, lon in sorted_coords])
-        route_url = f"http://router.project-osrm.org/route/v1/driving/{sorted_coords_str}?overview=full&geometries=geojson"
-        
-        r_route = requests.get(route_url, timeout=10)
-        data_route = r_route.json()
-        
-        if 'routes' not in data_route or len(data_route['routes']) == 0:
-            return None, None, None
+        # Step 2: Extract real, unbroken geometries using the standard Route API, stitch them point-to-point
+        # OSRM Public API has geographic snapping bugs for massive multi-stop routes across states, so we do it step-by-step
+        coords = []
+        length_km = 0
+        time_min = 0
+        for i in range(len(sorted_coords) - 1):
+            lon1, lat1 = sorted_coords[i][1], sorted_coords[i][0]
+            lon2, lat2 = sorted_coords[i+1][1], sorted_coords[i+1][0]
+            route_url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
             
-        route = data_route['routes'][0]
-        coords = [[p[1], p[0]] for p in route['geometry']['coordinates']]
-        length_km = route['distance'] / 1000.0
-        time_min = route['duration'] / 60.0
+            r_route = requests.get(route_url, timeout=10)
+            data_route = r_route.json()
+            
+            if 'routes' in data_route and len(data_route['routes']) > 0:
+                route = data_route['routes'][0]
+                segment_coords = [[p[1], p[0]] for p in route['geometry']['coordinates']]
+                coords.extend(segment_coords)
+                length_km += route['distance'] / 1000.0
+                time_min += route['duration'] / 60.0
         
         return coords, length_km, time_min
     except Exception as e:
@@ -110,24 +115,32 @@ def get_baseline_osrm_multi_route(coords_list):
     Uses standard OSRM Route API (no TSP optimization) to get baseline metrics
     for the exact order of stops the user entered.
     """
-    coords_str = ";".join([f"{lon},{lat}" for lat, lon in coords_list])
-    url = f"http://router.project-osrm.org/route/v1/driving/{coords_str}?overview=full&geometries=geojson"
+    coords = []
+    base_len = 0
+    base_time = 0
     try:
-        r = requests.get(url, timeout=10)
-        data = r.json()
+        for i in range(len(coords_list) - 1):
+            lon1, lat1 = coords_list[i][1], coords_list[i][0]
+            lon2, lat2 = coords_list[i+1][1], coords_list[i+1][0]
+            url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
+            
+            r = requests.get(url, timeout=10)
+            data = r.json()
+            
+            if 'routes' in data and len(data['routes']) > 0:
+                route = data['routes'][0]
+                segment_coords = [[p[1], p[0]] for p in route['geometry']['coordinates']]
+                coords.extend(segment_coords)
+                base_len += route['distance'] / 1000.0
+                base_time += route['duration'] / 60.0
         
-        if 'routes' not in data or len(data['routes']) == 0:
+        if not coords:
             return None, None, None
             
-        route = data['routes'][0]
-        coords = [[p[1], p[0]] for p in route['geometry']['coordinates']]
-        length_km = route['distance'] / 1000.0
-        time_min = route['duration'] / 60.0
-        
         # Perturb baseline geometry slightly so it visually separates if it happens to be the same path
         coords = [[lat + 0.005, lon + 0.005] for lat, lon in coords]
         
-        return coords, length_km, time_min
+        return coords, base_len, base_time
     except Exception as e:
         print(f"OSRM Baseline Route Error: {e}")
         return None, None, None
