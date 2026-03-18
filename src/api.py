@@ -12,6 +12,7 @@ from src.engines.weight_engine import apply_conditions
 from src.engines.eco_engine import calculate_emission
 from src.engines.optimization_engine import optimize_single_segment, optimize_multi_stop_tsp
 from src.engines.osrm_engine import get_predefined_osrm_routes, get_predefined_osrm_multi_routes, get_baseline_osrm_multi_route
+from src.generate_pdf_report import create_pdf_report
 import osmnx as ox
 
 # --- Application Setup ---
