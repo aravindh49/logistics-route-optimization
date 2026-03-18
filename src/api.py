@@ -253,26 +253,31 @@ def optimize_multi(request: MultiOptimizationRequest):
     }
 
 @app.get("/report")
-def get_report(start_node: str, end_node: str, opt_time: float, base_time: float, opt_cost: float, base_cost: float, time_eff: float, cost_eff: float, ai_score: float, base_score: float):
+def get_report(start_node: str, end_node: str, opt_time: float, base_time: float, opt_cost: float, base_cost: float, time_eff: float, cost_eff: float, ai_score: float, base_score: float, vehicle: str = "Unknown", stops: str = "", co2: float = 0.0):
     """Generates and returns a PDF report."""
+    
+    stops_text = f" via **{stops.replace(',', ', ')}**" if stops else ""
+    
     markdown_content = f"""
-# Logistics Route Optimization Report
+# AI Logistics Route Optimization Report
 
 ## Executive Summary
-Optimized delivery from **{start_node}** to **{end_node}**.
+Optimized delivery route starting from **{start_node}**{stops_text} terminating at destination **{end_node}**.  
+**Dispatched Vehicle Type:** {vehicle}
 
-## Detailed Metrics
+## Detailed Performance Metrics
 
 | Metric | Baseline Route | AI Optimized Route | Efficiency Gain |
 | :--- | :--- | :--- | :--- |
-| **Total Time** | {base_time} min | **{opt_time} min** | **+{round(time_eff, 2)}%** |
-| **Fuel Cost** | ${base_cost} | **${opt_cost}** | **+{round(cost_eff, 2)}%** |
-| **Route Quality Score** | {base_score} | **{ai_score}** | - |
+| **Total Routing Time** | {base_time} min | **{opt_time} min** | **+{round(time_eff, 2)}%** |
+| **Est. Energy Cost** | ${base_cost} | **${opt_cost}** | **+{round(cost_eff, 2)}%** |
+| **Calculated CO2 Tracking** | - | **{co2} kg** | - |
+| **AI Route Quality Score** | {base_score} | **{ai_score}** | - |
 
-> *Note: Route Quality Score is calculated as a weighted sum of Time, Fuel, and Distance, where lower is better.*
+> *Note: Route Quality Score is calculated as a weighted sum of Time, Fuel, and Distance, where lower is mathematically better.*
 
 ## Conclusion
-The AI-Optimized route uses the real physical road network (via OSM) coupled with dynamic simulated traffic constraints to provide the most logically efficient path.
+The AI-Optimized algorithmic route computationally assessed the raw physical road network (via OSRM matrix metrics) coupled with dynamic simulated conditions to generate the most logically efficient multi-stop path.
     """
     
     output_path = "reports/optimization_report.pdf"

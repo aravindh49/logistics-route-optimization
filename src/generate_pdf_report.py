@@ -18,11 +18,15 @@ def create_pdf_report(markdown_content, output_path="reports/project_pipeline_re
     <html>
     <head>
         <style>
-            body {{ font-family: Helvetica, sans-serif; font-size: 12px; }}
-            h1 {{ color: #333; text-align: center; font-size: 18px; margin-bottom: 20px; }}
-            table {{ width: 100%; border: 1px solid #ddd; border-collapse: collapse; margin-top: 10px; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-            th {{ background-color: #f2f2f2; font-weight: bold; }}
+            body {{ font-family: 'Open Sans', Helvetica, sans-serif; font-size: 14px; color: #1c1c1c; padding: 20px; }}
+            h1 {{ color: #020617; text-align: left; font-size: 24px; padding-bottom: 5px; border-bottom: 2px solid #0ea5e9; margin-bottom: 25px; }}
+            h2 {{ color: #0f172a; font-size: 18px; margin-top: 20px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 15px; border-radius: 8px; overflow: hidden; }}
+            th, td {{ border: 1px solid #e2e8f0; padding: 12px; text-align: left; }}
+            th {{ background-color: #f1f5f9; font-weight: bold; color: #0f172a; font-size: 13px; text-transform: uppercase; }}
+            td {{ background-color: #ffffff; color: #334155; }}
+            blockquote {{ background-color: #f8fafc; border-left: 4px solid #0ea5e9; padding: 10px 15px; margin: 20px 0; font-style: italic; color: #64748b; font-size: 13px; }}
+            strong {{ color: #020617; }}
         </style>
     </head>
     <body>

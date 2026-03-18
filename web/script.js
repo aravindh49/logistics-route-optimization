@@ -231,7 +231,10 @@ function setupEventListeners() {
             time_eff: currentResults.time_efficiency,
             cost_eff: currentResults.cost_efficiency,
             ai_score: currentResults.ai_score,
-            base_score: currentResults.baseline_score
+            base_score: currentResults.baseline_score,
+            vehicle: currentResults.vehicle_type || 'Unknown',
+            stops: currentResults.stops && currentResults.stops.length > 0 ? currentResults.stops.join(',') : '',
+            co2: currentResults.co2_emission || 0
         });
         window.open(`${API_URL}/report?${params.toString()}`, '_blank');
     });
